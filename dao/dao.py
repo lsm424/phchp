@@ -1,15 +1,14 @@
 #encodingd=utf-8
 import datetime
 import re
-
-from peewee import fn
-from dao.proxy import Proxy, NEED_VALID, VALID_SUCCESS, db
+from peewee import *
+from dao.proxy import BaseModel, MetaInfo, NEED_VALID, VALID_SUCCESS, db
 
 
 class ProxyDao:
     def __init__(self):
         self.scope = {}
-        tables = list(filter(lambda x: x.ends("_scope"), db.get_tables()))
+        tables = list(filter(lambda x: x.endswith("_scope"), db.get_tables()))
         # 配置默认值
         if not tables:
             tables = ['www.baidu.com']
@@ -17,14 +16,38 @@ class ProxyDao:
 
     # 创建表
     def add_scope(self, scope):
-        table = Proxy()
-        table.Meta.table_name = f'{self.__fix_scope_name(scope)}_scope'
-        if not table.table_exists():
-            table.create_table()
-        self.scope[scope] = table
+        if not scope.endswith('_scope'):
+            table_name = f'{self.__fix_scope_name(scope)}_scope'
+        else:
+            table_name = scope
+        table = f'''
+class {table_name}(BaseModel):
+    proxy = CharField()         # 代理地址: ip:port格式
+    status = IntegerField()     # 状态： 0：待验证、1：成功、2、失败
+    message = CharField()
+    suc_cnt = IntegerField(default=0)        # 成功的次数
+    fail_cnt = IntegerField(default=0)  # 失败的次数
+    time_use = CharField(default="")       # 耗时，单位秒
+    update_time = TimeField(constraints=[SQL("DEFAULT CURRENT_TIMESTAMP")])
+    create_time = TimeField(constraints=[SQL("DEFAULT CURRENT_TIMESTAMP")])
+'''
+        exec(table)
+        table = MetaInfo()
+        table.table = eval(f'{table_name}()')
+        table.update_time = eval(f"getattr({table_name}, 'update_time')")
+        table.status = eval(f"getattr({table_name}, 'status')")
+        table.proxy = eval(f"getattr({table_name}, 'proxy')")
+        table.message = eval(f"getattr({table_name}, 'message')")
+        table.suc_cnt = eval(f"getattr({table_name}, 'suc_cnt')")
+        table.fail_cnt = eval(f"getattr({table_name}, 'fail_cnt')")
+        table.time_use = eval(f"getattr({table_name}, 'time_use')")
+        table.create_time = eval(f"getattr({table_name}, 'create_time')")
+        if not table.table.table_exists():
+            table.table.create_table()
 
         proxies = self.get_proxy('www.baidu.com', status=VALID_SUCCESS)
         self.add_need_valid_proxies(scope, proxies)
+        self.scope[scope] = table
 
     # scope 名称到表名称
     def __fix_scope_name(self, name):
@@ -36,7 +59,7 @@ class ProxyDao:
     # 插入一条待验证的代理
     def add_need_valid_proxy(self, scope, proxy):
         table = self.scope[scope]
-        ret = table.select(table.proxy).where(table.proxy == proxy)
+        ret = table.table.select(table.proxy).where(table.proxy == proxy)
         if len(ret) == 0:
             table.create(scope=scope, proxy=proxy, status=NEED_VALID)
 
@@ -45,7 +68,8 @@ class ProxyDao:
         if len(proxies) == 0 or scope not in self.scope:
             return
         proxy_table = self.scope[scope]
-        ret = proxy_table.select(proxy_table.proxy).where(proxy_table.proxy.in_(proxies))
+        ret = proxy_table.table.select(proxy_table.proxy).\
+            where(proxy_table.proxy.in_(proxies))
         proxies = set(proxies) - set(map(lambda x: x.proxy, ret))
         if len(proxies) > 0:
             data = list(map(lambda x: {'proxy': x, 'status': NEED_VALID, 'time_use': '', "message": '待验证'}, proxies))
@@ -65,7 +89,7 @@ class ProxyDao:
             return []
         proxy_table = self.scope[scope]
         params = []
-        ret = proxy_table.select(proxy_table.proxy)
+        ret = proxy_table.table.select(proxy_table.proxy)
         if limit:
             ret = ret.limit(limit)
         if off:
@@ -87,7 +111,7 @@ class ProxyDao:
             return 0
         proxy_table = self.scope[scope]
         params = []
-        ret = proxy_table.select()
+        ret = proxy_table.table.select()
         if status:
             params.append(proxy_table.status == status)
         if time_use:
@@ -103,7 +127,7 @@ class ProxyDao:
             return
         proxy_table = self.scope[scope]
         cur_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        proxy_table.update({proxy_table.status: status, proxy_table.message: message,
+        proxy_table.table.update({proxy_table.status: status, proxy_table.message: message,
                             proxy_table.update_time: cur_time}).where(proxy_table.proxy == proxy).execute()
 
 

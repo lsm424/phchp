@@ -11,8 +11,7 @@ from dao.dao import proxy_table_manager
 class ProxyProducer:
     def __init__(self):
         self.t = []
-        producers = list(filter(lambda x: x.ends('_proxy.py') and x not in self.proxies_producers_name,
-                                os.listdir()))
+        producers = list(filter(lambda x: x.endswith('_proxy.py'), os.listdir()))
         for i in producers:
             t = threading.Thread(target=self.get_proxies, args=(i,))
             t.setDaemon(True)

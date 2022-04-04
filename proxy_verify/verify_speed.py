@@ -10,6 +10,7 @@ from dao.dao import proxy_table_manager
 from dao.proxy import VALID_SUCCESS, VALID_FAILED, NEED_VALID_SPEED
 
 
+# VerifySpeed
 class VerifySpeed:
     def __init__(self):
         self.t = threading.Thread(target=self.run)
@@ -26,7 +27,7 @@ class VerifySpeed:
     def get_proxy_to_verify(self, scope, status):
         update_time = None
         if status == VALID_SUCCESS:
-            update_time = datetime.datetime.now() - datetime.timedelta(minutes=10)
+            update_time = (datetime.datetime.now() - datetime.timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
         cnt = proxy_table_manager.get_proxy_count(scope, status=status, update_time=update_time)
         if cnt > 0:
             page_size = 20
@@ -41,6 +42,7 @@ class VerifySpeed:
                         list(map(lambda x: proxy_table_manager.update_status(x,
                                                                              proxy=proxy, message=message,
                                                                              status=status), scopes))
+        time.sleep(5)
 
     def verify_speed(self, scope, proxy):
         url = f'https://{scope}'
